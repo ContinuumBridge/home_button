@@ -21,17 +21,17 @@ class Adaptor(CbAdaptor):
     def __init__(self, argv):
         self.status =           "ok"
         self.state =            "stopped"
-        self.apps =             {"number_buttons": []}
+        self.apps =             {"button": []}
         # super's __init__ must be called:
         #super(Adaptor, self).__init__(argv)
         CbAdaptor.__init__(self, argv)
  
     def setState(self, action):
         # error is only ever set from the running state, so set back to running if error is cleared
-        if action == "error":
-            self.state == "error"
-        elif action == "clear_error":
+        if action == "clear_error":
             self.state = "running"
+        else:
+            self.state = action
         msg = {"id": self.id,
                "status": "state",
                "state": self.state}
@@ -51,7 +51,7 @@ class Adaptor(CbAdaptor):
         resp = {"name": self.name,
                 "id": self.id,
                 "status": "ok",
-                "service": [{"characteristic": "number_buttons", "interval": 0}],
+                "service": [{"characteristic": "button", "interval": 0}],
                 "content": "service"}
         self.sendMessage(resp, message["id"])
 
@@ -65,7 +65,7 @@ class Adaptor(CbAdaptor):
             if message["id"] not in self.apps[f["characteristic"]]:
                 self.apps[f["characteristic"]].append(message["id"])
         self.cbLog("debug", "apps: " + str(self.apps))
-        if self.state = "starting":
+        if self.state != "running":
             self.startScan()
         self.setState("running")
 
@@ -83,15 +83,24 @@ class Adaptor(CbAdaptor):
         self.setState("starting")
 
     def scanBT(self):
+        self.cbLog("debug", "scanBT starting")
+        previous = time.time()
         while not self.doStop:
             try:
-                index = self.hcidump.expect(['successful'])
-                raw = self.gatt.after.split()
-                self.cbLog("scanBT. raw: " + str(raw))
+                index = self.hcidump.expect([self.addr, pexpect.TIMEOUT, pexpect.EOF], timeout=5)
+                if index == 0:
+                    raw = self.hcidump.after.split()
+                    now = time.time()
+                    #self.cbLog("debug", "scanBT. raw: " + str(raw))
+                    if now  - previous > 1:
+                        self.cbLog("debug", "scanBT button press  ")
+                        reactor.callFromThread(self.sendCharacteristic, "button", "1", now)
+                    previous = now
             except Exception as ex:
                 self.cbLog("warning", "scanBT. Exception: " + str(type(ex)) + " " + str(ex.args))
 
     def startScan(self):
+        self.cbLog("debug", "startScant, address: " + self.addr)
         try:
             self.hcidump = pexpect.spawn("sudo hcidump -i hci0")
             reactor.callInThread(self.scanBT)
@@ -102,7 +111,7 @@ class Adaptor(CbAdaptor):
             self.cbLog("warning", "startScan. Exception: " + str(type(ex)) + " " + str(ex.args))
 
     def checkStop(self):
-        if self.dostop:
+        if self.doStop:
             self.hcidump.kill(9)
             reactor.stop()
 
