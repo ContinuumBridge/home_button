@@ -11,6 +11,7 @@ import sys
 import time
 import os
 import pexpect
+from subprocess import call
 from cbcommslib import CbAdaptor
 from cbconfig import *
 from twisted.internet import threads
@@ -100,7 +101,12 @@ class Adaptor(CbAdaptor):
                 self.cbLog("warning", "scanBT. Exception: " + str(type(ex)) + " " + str(ex.args))
 
     def startScan(self):
-        self.cbLog("debug", "startScant, address: " + self.addr)
+        self.cbLog("debug", "startScan, address: " + self.addr)
+        try:
+            call(["hciconfig", "hci0", "piscan"])
+        except Exception as ex:
+            self.cbLog("warning", 'startScan. Could not call hciconfig hci0 piscan')
+            self.cbLog("warning", "startScan. Exception: " + str(type(ex)) + " " + str(ex.args))
         try:
             self.hcidump = pexpect.spawn("sudo hcidump -i hci0")
             reactor.callInThread(self.scanBT)
@@ -113,7 +119,6 @@ class Adaptor(CbAdaptor):
     def checkStop(self):
         if self.doStop:
             self.hcidump.kill(9)
-            reactor.stop()
 
 if __name__ == '__main__':
     Adaptor(sys.argv)
